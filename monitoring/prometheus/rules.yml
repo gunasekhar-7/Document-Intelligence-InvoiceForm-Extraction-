@@ -1,0 +1,175 @@
+groups:
+  - name: document-intelligence-api
+    interval: 30s
+    rules:
+      # API Latency
+      - alert: APIHighLatency
+        expr: histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{job="document-intelligence-api"}[5m])) by (le)) > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "API p99 latency > 2s"
+          description: "API p99 latency is {{ $value }}s for {{ $labels.instance }}"
+
+      - alert: APIVeryHighLatency
+        expr: histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{job="document-intelligence-api"}[5m])) by (le)) > 5
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "API p99 latency > 5s"
+          description: "API p99 latency is {{ $value }}s for {{ $labels.instance }}"
+
+      # Error Rate
+      - alert: APIHighErrorRate
+        expr: sum(rate(http_requests_total{job="document-intelligence-api",status=~"5.."}[5m])) / sum(rate(http_requests_total{job="document-intelligence-api"}[5m])) > 0.05
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: "API error rate > 5%"
+          description: "API error rate is {{ $value | humanizePercentage }}"
+
+      - alert: APIVeryHighErrorRate
+        expr: sum(rate(http_requests_total{job="document-intelligence-api",status=~"5.."}[5m])) / sum(rate(http_requests_total{job="document-intelligence-api"}[5m])) > 0.1
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "API error rate > 10%"
+          description: "API error rate is {{ $value | humanizePercentage }}"
+
+      # Queue Depth
+      - alert: ProcessingQueueBacklog
+        expr: redis_queue_length{queue="document_intelligence:queue"} > 100
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Processing queue backlog > 100"
+          description: "Queue has {{ $value }} pending jobs"
+
+      - alert: ProcessingQueueCriticalBacklog
+        expr: redis_queue_length{queue="document_intelligence:queue"} > 500
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Processing queue critical backlog > 500"
+          description: "Queue has {{ $value }} pending jobs - consider scaling workers"
+
+      # Worker Health
+      - alert: WorkerDown
+        expr: up{job="document-intelligence-worker"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Worker pod down"
+          description: "Worker {{ $labels.pod }} has been down for 1 minute"
+
+      - alert: WorkerHighMemoryUsage
+        expr: (container_memory_usage_bytes{job="document-intelligence-worker"} / container_spec_memory_limit_bytes{job="document-intelligence-worker"}) > 0.9
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Worker memory usage > 90%"
+          description: "Worker {{ $labels.pod }} memory usage is {{ $value | humanizePercentage }}"
+
+      - alert: WorkerGPUOOM
+        expr: container_gpu_memory_usage_bytes{job="document-intelligence-worker"} / container_gpu_memory_limit_bytes{job="document-intelligence-worker"} > 0.95
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Worker GPU OOM risk"
+          description: "Worker {{ $labels.pod }} GPU memory usage is {{ $value | humanizePercentage }}"
+
+  - name: document-intelligence-business
+    interval: 60s
+    rules:
+      # Business metrics
+      - alert: LowExtractionAccuracy
+        expr: |
+          (
+            sum(rate(documents_processed_total{status="completed",extraction_f1<0.8}[1h]))
+            /
+            sum(rate(documents_processed_total{status="completed"}[1h]))
+          ) > 0.1
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Extraction accuracy below threshold"
+          description: "More than 10% of documents have F1 < 0.8 in the last hour"
+
+      - alert: HighProcessingTime
+        expr: histogram_quantile(0.95, sum(rate(document_processing_duration_seconds_bucket[5m])) by (le)) > 30
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Document processing time > 30s (p95)"
+          description: "P95 processing time is {{ $value }}s"
+
+      - alert: DuplicateDocumentsHigh
+        expr: rate(documents_rejected_duplicate_total[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: info
+        annotations:
+          summary: "High duplicate document rate"
+          description: "Duplicate rejection rate is {{ $value }}/s"
+
+  - name: document-intelligence-infrastructure
+    interval: 30s
+    rules:
+      # Database
+      - alert: DatabaseConnectionsHigh
+        expr: pg_stat_database_numbackends / pg_settings_max_connections > 0.8
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Database connections > 80%"
+          description: "Database connection usage is {{ $value | humanizePercentage }}"
+
+      - alert: DatabaseReplicationLag
+        expr: pg_replication_lag_seconds > 30
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Database replication lag > 30s"
+          description: "Replication lag is {{ $value }}s"
+
+      # Redis
+      - alert: RedisMemoryHigh
+        expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Redis memory usage > 85%"
+          description: "Redis memory usage is {{ $value | humanizePercentage }}"
+
+      # MinIO
+      - alert: MinIODiskSpaceLow
+        expr: (minio_disk_free_bytes / minio_disk_total_bytes) < 0.15
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "MinIO disk space < 15%"
+          description: "MinIO disk usage is {{ (1 - $value) | humanizePercentage }}"
+
+      - alert: MinIODiskSpaceCritical
+        expr: (minio_disk_free_bytes / minio_disk_total_bytes) < 0.05
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "MinIO disk space < 5%"
+          description: "MinIO disk usage is {{ (1 - $value) | humanizePercentage }}"

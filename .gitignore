@@ -1,0 +1,85 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Database
+*.db
+*.sqlite3
+
+# Model artifacts
+models/
+*.onnx
+*.pt
+*.bin
+*.safetensors
+
+# Data
+data/raw/
+data/processed/
+data/public/
+!data/synthetic/
+!data/synthetic/metadata.json
+
+# MLflow
+mlruns/
+
+# DVC
+.dvc/
+data/.dvc/
+
+# Coverage
+htmlcov/
+.coverage
+coverage.xml
+
+# Test artifacts
+.pytest_cache/
+.tox/
+
+# Build
+build/
+dist/
+*.egg-info/
+
+# Docker
+.docker/
+
+# Terraform
+*.tfstate
+*.tfstate.backup
+.terraform/
+
+# Kubernetes
+kubeconfig
+
+# Misc
+*.pem
+*.key
+*.crt

@@ -1,0 +1,83 @@
+version: '3.8'
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    container_name: docintel-api-dev
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://docintel:docintel_dev@postgres:5432/document_intelligence
+      - REDIS_URL=redis://redis:6379/0
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=minioadmin
+      - MINIO_SECRET_KEY=minioadmin
+      - MINIO_BUCKET=documents
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+      - LOG_LEVEL=DEBUG
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./src:/app/src:ro
+    develop:
+      watch:
+        - action: sync
+          path: ./src
+          target: /app/src
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.worker
+    container_name: docintel-worker-dev
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://docintel:docintel_dev@postgres:5432/document_intelligence
+      - REDIS_URL=redis://redis:6379/0
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=minioadmin
+      - MINIO_SECRET_KEY=minioadmin
+      - MINIO_BUCKET=documents
+      - LOG_LEVEL=DEBUG
+    volumes:
+      - ./src:/app/src:ro
+    develop:
+      watch:
+        - action: sync
+          path: ./src
+          target: /app/src
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  # Jupyter for development
+  jupyter:
+    image: jupyter/datascience-notebook:python-3.11
+    container_name: docintel-jupyter
+    environment:
+      - JUPYTER_ENABLE_LAB=yes
+    ports:
+      - "8888:8888"
+    volumes:
+      - ./src:/home/jovyan/src
+      - ./data:/home/jovyan/data
+      - ./notebooks:/home/jovyan/notebooks
+    working_dir: /home/jovyan
+    command: start-notebook.sh --NotebookApp.token='' --NotebookApp.password=''

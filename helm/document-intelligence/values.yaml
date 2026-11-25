@@ -1,0 +1,216 @@
+# Default values for document-intelligence
+# This is a YAML-formatted file.
+
+global:
+  imageRegistry: ghcr.io
+  imagePullSecrets: []
+  environment: production
+
+# API service
+api:
+  enabled: true
+  replicaCount: 3
+  image:
+    repository: document-intelligence-api
+    tag: latest
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 8000
+  ingress:
+    enabled: true
+    className: nginx
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt-prod
+      nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+      nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+      nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+    hosts:
+      - host: api.document-intelligence.example.com
+        paths:
+          - path: /
+            pathType: Prefix
+    tls:
+      - secretName: document-intelligence-tls
+        hosts:
+          - api.document-intelligence.example.com
+  resources:
+    limits:
+      cpu: 2000m
+      memory: 4Gi
+    requests:
+      cpu: 500m
+      memory: 1Gi
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 20
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
+  env:
+    - name: LOG_LEVEL
+      value: INFO
+    - name: API_WORKERS
+      value: "4"
+  livenessProbe:
+    httpGet:
+      path: /health/live
+      port: 8000
+    initialDelaySeconds: 30
+    periodSeconds: 10
+  readinessProbe:
+    httpGet:
+      path: /health/ready
+      port: 8000
+    initialDelaySeconds: 10
+    periodSeconds: 5
+
+# Worker service
+worker:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: document-intelligence-worker
+    tag: latest
+    pullPolicy: IfNotPresent
+  resources:
+    limits:
+      cpu: 4000m
+      memory: 16Gi
+      nvidia.com/gpu: 1
+    requests:
+      cpu: 2000m
+      memory: 8Gi
+      nvidia.com/gpu: 1
+  nodeSelector:
+    accelerator: nvidia-tesla-t4
+  tolerations:
+    - key: nvidia.com/gpu
+      operator: Exists
+      effect: NoSchedule
+  env:
+    - name: LOG_LEVEL
+      value: INFO
+    - name: WORKER_CONCURRENCY
+      value: "2"
+    - name: MODEL_WARMUP
+      value: "true"
+
+# PostgreSQL (using external managed instance recommended for production)
+postgresql:
+  enabled: false
+  # For development only:
+  # enabled: true
+  # auth:
+  #   database: document_intelligence
+  #   username: docintel
+  #   password: changeme
+  # primary:
+  #   persistence:
+  #     size: 20Gi
+
+# Redis (using external managed instance recommended for production)
+redis:
+  enabled: false
+  # For development only:
+  # enabled: true
+  # auth:
+  #   enabled: false
+  # master:
+  #   persistence:
+  #     size: 5Gi
+
+# MinIO (using external managed instance recommended for production)
+minio:
+  enabled: false
+  # For development only:
+  # enabled: true
+  # auth:
+  #   rootUser: minioadmin
+  #   rootPassword: changeme
+  # persistence:
+  #   size: 50Gi
+
+# MLflow (using external managed instance recommended for production)
+mlflow:
+  enabled: false
+  # For development only:
+  # enabled: true
+  # backendStore:
+  #   postgresql:
+  #     enabled: true
+  # artifactStore:
+  #   s3:
+  #     enabled: true
+
+# Monitoring
+monitoring:
+  enabled: true
+  prometheus:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+      interval: 30s
+  grafana:
+    enabled: true
+    dashboards:
+      enabled: true
+  loki:
+    enabled: true
+  tempo:
+    enabled: true
+
+# Secrets (create these manually or via external secrets operator)
+secrets:
+  databaseUrl: ""
+  redisUrl: ""
+  minioAccessKey: ""
+  minioSecretKey: ""
+  jwtSecret: ""
+  mlflowS3Endpoint: ""
+  awsAccessKeyId: ""
+  awsSecretAccessKey: ""
+
+# Service accounts
+serviceAccount:
+  create: true
+  annotations: {}
+
+# Network policies
+networkPolicy:
+  enabled: true
+
+# Pod disruption budget
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 50%
+
+# External Secrets Operator integration
+externalSecrets:
+  enabled: false
+  # Example configuration for AWS Secrets Manager:
+  # backendType: aws
+  # aws:
+  #   region: us-east-1
+  #   auth:
+  #     # Use IRSA (IAM Roles for Service Accounts) or static credentials
+  #     # roleArn: arn:aws:iam::123456789012:role/ExternalSecretsRole
+  # secretStore:
+  #   name: aws-secrets-manager
+  #   namespace: document-intelligence
+  # secretRefs:
+  #   - key: database-url
+  #     property: databaseUrl
+  #     secretName: docintel-secrets
+  #   - key: redis-url
+  #     property: redisUrl
+  #     secretName: docintel-secrets
+  #   - key: minio-access-key
+  #     property: minioAccessKey
+  #     secretName: docintel-secrets
+  #   - key: minio-secret-key
+  #     property: minioSecretKey
+  #     secretName: docintel-secrets
+  #   - key: jwt-secret
+  #     property: jwtSecret
+  #     secretName: docintel-secrets
